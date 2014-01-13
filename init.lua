@@ -244,10 +244,10 @@ end
 
 
 minetest.register_craft({
-	output = 'replacer:replacer',
+	output = "replacer:replacer",
 	recipe = {
-		{'default:chest', '', ''},
-		{'', 'default:stick', ''},
-		{'', '', 'default:chest'},
+		{"default:chest", "default:obsidian", "default:obsidian"},
+		{"default:obsidian", "default:stick", "default:obsidian"},
+		{"default:obsidian", "default:obsidian", "default:chest"},
 	}
 })
