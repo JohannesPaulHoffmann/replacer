@@ -1,7 +1,6 @@
 -- taken from Vanessa Ezekowitz' homedecor mod
 -- see http://forum.minetest.net/viewtopic.php?pid=26061 or https://github.com/VanessaE/homedecor for details!
 function replacer_homedecor_node_is_owned(pos, placer)
-
 	if( not( placer ) or not(pos )) then
 		return true;
 	end

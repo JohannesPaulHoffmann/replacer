@@ -56,6 +56,29 @@ replacer.blacklist[ "protector:protect2"] = true;
 -- adds a tool for inspecting nodes and entities
 dofile(minetest.get_modpath("replacer").."/inspect.lua")
 
+local function inform(name, msg)
+	minetest.chat_send_player(name, msg)
+	minetest.log("info", "[replacer] "..name..": "..msg)
+end
+
+local function get_data(item)
+	local daten = (item and item.metadata and item.metadata:split" ") or {}
+	return {
+			name=daten[1] or "default:dirt",
+			param1=tonumber(daten[2]) or 0,
+			param2=tonumber(daten[3]) or 0
+		},
+		tonumber(daten[4]) or 0
+end
+
+local function set_data(itemstack, node, mode)
+	local metadata = (node.name or"default:dirt") .." "
+		..(node.param1 or 0).." "..(node.param2 or 0)
+		.." "..(mode or 0)
+	itemstack:set_metadata(metadata)
+	return metadata
+end
+
 minetest.register_tool("replacer:replacer", {
 	description = "Node replacement tool",
 	inventory_image = "replacer_replacer.png",
@@ -64,42 +87,45 @@ minetest.register_tool("replacer:replacer", {
 	--node_placement_prediction = nil,
 	metadata = "default:dirt", -- default replacement: common dirt
 
-	on_place = function(itemstack, placer, pointed_thing)
+	on_place = function(itemstack, placer, pt)
 		if not placer
-		or not pointed_thing then
-			return itemstack -- nothing consumed
-		end
-
-		local keys = placer:get_player_control()
-		-- just place the stored node if now new one is to be selected
-		if not keys.sneak then
-			return replacer.replace(itemstack, placer, pointed_thing, true)
-		end
-
-		local name = placer:get_player_name()
-		--minetest.chat_send_player( name, "You PLACED this on "..minetest.serialize( pointed_thing )..".")
-
-		if pointed_thing.type ~= "node" then
-			minetest.chat_send_player(name, "Error: No node selected.")
+		or not pt then
 			return
 		end
 
-		local pos = pointed_thing.under
-		local node = minetest.get_node_or_nil(pos)
+		local keys = placer:get_player_control()
 
-		--minetest.chat_send_player(name, "	Target node: "..minetest.serialize(node).." at pos "..minetest.serialize(pos)..".")
-
-		local metadata = "default:dirt 0 0"
-		if node
-		and node.name then
-			metadata = node.name..' '..node.param1..' '..node.param2
+		if keys.aux1 then
+			local item = itemstack:to_table()
+			local node, mode = get_data(item)
+			mode = (mode+1)%2
+			set_data(item, node, mode)
+			itemstack:replace(item)
+			return itemstack
 		end
-		itemstack:set_metadata(metadata)
 
-		minetest.chat_send_player(name, "Node replacement tool set to: '"
-			.. metadata .. "'.")
+		-- just place the stored node if now new one is to be selected
+		if not keys.sneak then
+			return replacer.replace(itemstack, placer, pt, true)
+		end
 
-		return itemstack -- nothing consumed but data changed
+		local name = placer:get_player_name()
+
+		if pt.type ~= "node" then
+			inform(name, "Error: No node selected.")
+			return
+		end
+
+		local item = itemstack:to_table()
+		local node, mode = get_data(item)
+
+		node = minetest.get_node_or_nil(pt.under) or node
+
+		local metadata = set_data(itemstack, node, mode)
+
+		inform(name, "Node replacement tool set to: '" .. metadata .. "'.")
+
+		return itemstack --data changed
 	end,
 
 
@@ -110,48 +136,66 @@ minetest.register_tool("replacer:replacer", {
 	end,
 })
 
-replacer.replace = function(itemstack, user, pointed_thing, above)
+-- tests if a node can be replaced
+local function replaceable(pos, name, pname)
+	if minetest.get_node(pos).name ~= name
+	or minetest.is_protected(pos, pname) then
+		return false
+	end
+	return true
+end
+
+-- finds out positions
+local function get_ps(pos, name, pname, adps, max)
+	local tab = {}
+	local num = 1
+	local todo = {pos}
+	local tab_avoid = {}
+	while todo[1] do
+		for n,p in pairs(todo) do
+			for _,p2 in pairs(adps) do
+				p2 = vector.add(p, p2)
+				local pstr = p2.x.." "..p2.y.." "..p2.z
+				if not tab_avoid[pstr]
+				and replaceable(pos, name, pname) then
+					tab[num] = p2
+					tab_avoid[pstr] = true
+					num = num+1
+					table.insert(todo, p2)
+					if max
+					and num > max then
+						return false
+					end
+				end
+			end
+			todo[n] = nil
+		end
+	end
+	return tab, num
+end
+
+function replacer.replace(itemstack, user, pt, above)
 	if not user
-	or not pointed_thing then
+	or not pt then
 		return
 	end
 	local name = user:get_player_name()
 
-	if pointed_thing.type ~= "node" then
-		minetest.chat_send_player(name, "Error: No node.")
+	if pt.type ~= "node" then
+		inform(name, "Error: No node.")
 		return
 	end
 
-	local pos = minetest.get_pointed_thing_position(pointed_thing, above)
+	local pos = minetest.get_pointed_thing_position(pt, above)
 	local node = minetest.get_node_or_nil(pos)
 
 	if not node then
-		minetest.chat_send_player(name, "Error: Target node not yet loaded. Please wait a moment for the server to catch up.")
+		inform(name, "Error: Target node not yet loaded. Please wait a moment for the server to catch up.")
 		return
 	end
 
 	local item = itemstack:to_table()
-
-	-- make sure it is defined
-	if not item.metadata
-	or item.metadata == "" then
-		item.metadata = "default:dirt 0 0"
-	end
-
-	-- regain information about nodename, param1 and param2
-	local daten = item.metadata:split" "
-	-- the old format stored only the node name
-	if #daten < 3 then
-		daten[2] = 0
-		daten[3] = 0
-	end
-
-	local nnd = {name=daten[1], param1=daten[2], param2=daten[3]}
-
-	-- if someone else owns that node then we can not change it
-	if replacer_homedecor_node_is_owned(pos, user) then
-		return
-	end
+	local nnd, mode = get_data(item)
 
 	if replacer.blacklist[node.name] then
 		minetest.chat_send_player(name, "Replacing blocks of the type '" ..
@@ -170,7 +214,7 @@ replacer.replace = function(itemstack, user, pointed_thing, above)
 
 	-- do not replace if there is nothing to be done
 	if node.name == nnd.name then
-		-- the node itshelf remains the same, but the orientation was changed
+		-- only the orientation was changed
 		if node.param1 ~= nnd.param1
 		or node.param2 ~= nnd.param2 then
 			minetest.set_node(pos, nnd)
@@ -178,27 +222,54 @@ replacer.replace = function(itemstack, user, pointed_thing, above)
 		return
 	end
 
-	-- in survival mode, the player has to provide the node he wants to place
-	if( not(minetest.setting_getbool("creative_mode") )
-	and not( minetest.check_player_privs( name, {creative=true}))) then
+	if mode == 1 then
+		-- area replacing
+
+		-- get connected positions
+		local pdif = vector.subtract(pt.above, pt.under)
+		local adps = {}
+		for _,i in pairs{"x", "y", "z"} do
+			if pdif[i] == 0 then
+				local p = {x=0, y=0, z=0}
+				for a = -1,1,2 do
+					p[i] = a
+					adps[#adps+1] = p
+				end
+			end
+		end
+
+		local ps,num = get_ps(pt.under, nnd.name, name, adps, 5)
+		if not ps then
+			inform(name, "Aborted, too many nodes found.")
+			return
+		end
+		for _,pos in pairs(ps) do
+			minetest.set_node(pos, nnd)
+		end
+		inform(name, num.." nodes replaced.")
+		return
+	end
+
+	-- in survival mode, the player has to provide the node he wants to be placed
+	if not minetest.setting_getbool"creative_mode"
+	and not minetest.check_player_privs(name, {creative=true}) then
 
 		-- players usually don't carry dirt_with_grass around; it's safe to assume normal dirt here
 		-- fortionately, dirt and dirt_with_grass does not make use of rotation
 		if nnd.name == "default:dirt_with_grass" then
 			nnd.name = "default:dirt"
-			item.metadata = "default:dirt 0 0"
+			item.metadata = "default:dirt 0 0 0"
 		end
 
 		-- does the player carry at least one of the desired nodes with him?
 		if not user:get_inventory():contains_item("main", nnd.name) then
-			minetest.chat_send_player(name, "You have no further '"..tostring(nnd.name).."'. Replacement failed.")
+			inform(name, "You have no further '"..(nnd.name or "?").."'. Replacement failed.")
 			return
 		end
 
+
 		-- give the player the item by simulating digging if possible
-		if node.name ~= "air"
-		and node.name ~= "ignore"
-		and node.name ~= "default:lava_source"
+		if  node.name ~= "default:lava_source"
 		and node.name ~= "default:lava_flowing"
 		and node.name ~= "default:river_water_source"
 		and node.name ~= "default:river_water_flowing"
@@ -210,9 +281,10 @@ replacer.replace = function(itemstack, user, pointed_thing, above)
 			local dug_node = minetest.get_node_or_nil(pos)
 			if not dug_node
 			or dug_node.name == node.name then
-				minetest.chat_send_player(name, "Replacing '"..(node.name or "air").."' with '"..(item.metadata or "?").."' failed. Unable to remove old node.")
+				inform(name, "Replacing '"..(node.name or "air").."' with '"..(item.metadata or "?").."' failed. Unable to remove old node.")
 				return
 			end
+
 		end
 
 		-- consume the item
