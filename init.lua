@@ -56,8 +56,7 @@ replacer.blacklist[ "protector:protect2"] = true;
 -- adds a tool for inspecting nodes and entities
 dofile(minetest.get_modpath("replacer").."/inspect.lua")
 
-minetest.register_tool("replacer:replacer",
-{
+minetest.register_tool("replacer:replacer", {
 	description = "Node replacement tool",
 	inventory_image = "replacer_replacer.png",
 	stack_max = 1, -- it has to store information - thus only one can be stacked
@@ -74,7 +73,7 @@ minetest.register_tool("replacer:replacer",
 		local keys = placer:get_player_control()
 		-- just place the stored node if now new one is to be selected
 		if not keys.sneak then
-			return replacer.replace(itemstack, placer, pointed_thing, 0)
+			return replacer.replace(itemstack, placer, pointed_thing, true)
 		end
 
 		local name = placer:get_player_name()
@@ -111,7 +110,7 @@ minetest.register_tool("replacer:replacer",
 	end,
 })
 
-replacer.replace = function(itemstack, user, pointed_thing)
+replacer.replace = function(itemstack, user, pointed_thing, above)
 	if not user
 	or not pointed_thing then
 		return
@@ -123,7 +122,7 @@ replacer.replace = function(itemstack, user, pointed_thing)
 		return
 	end
 
-	local pos = pointed_thing.under
+	local pos = minetest.get_pointed_thing_position(pointed_thing, above)
 	local node = minetest.get_node_or_nil(pos)
 
 	if not node then
@@ -147,6 +146,8 @@ replacer.replace = function(itemstack, user, pointed_thing)
 		daten[3] = 0
 	end
 
+	local nnd = {name=daten[1], param1=daten[2], param2=daten[3]}
+
 	-- if someone else owns that node then we can not change it
 	if replacer_homedecor_node_is_owned(pos, user) then
 		return
@@ -168,14 +169,12 @@ replacer.replace = function(itemstack, user, pointed_thing)
 	end
 
 	-- do not replace if there is nothing to be done
-	if node.name == daten[1] then
-
+	if node.name == nnd.name then
 		-- the node itshelf remains the same, but the orientation was changed
-		if node.param1 ~= daten[2]
-		or node.param2 ~= daten[3] then
-			minetest.add_node(pos, {name = node.name, param1 = daten[2], param2 = daten[3]})
+		if node.param1 ~= nnd.param1
+		or node.param2 ~= nnd.param2 then
+			minetest.set_node(pos, nnd)
 		end
-
 		return
 	end
 
@@ -185,14 +184,14 @@ replacer.replace = function(itemstack, user, pointed_thing)
 
 		-- players usually don't carry dirt_with_grass around; it's safe to assume normal dirt here
 		-- fortionately, dirt and dirt_with_grass does not make use of rotation
-		if daten[1] == "default:dirt_with_grass" then
-			daten[1] = "default:dirt"
+		if nnd.name == "default:dirt_with_grass" then
+			nnd.name = "default:dirt"
 			item.metadata = "default:dirt 0 0"
 		end
 
 		-- does the player carry at least one of the desired nodes with him?
-		if not user:get_inventory():contains_item("main", daten[1]) then
-			minetest.chat_send_player(name, "You have no further '"..(daten[1] or "?").."'. Replacement failed.")
+		if not user:get_inventory():contains_item("main", nnd.name) then
+			minetest.chat_send_player(name, "You have no further '"..tostring(nnd.name).."'. Replacement failed.")
 			return
 		end
 
@@ -217,12 +216,11 @@ replacer.replace = function(itemstack, user, pointed_thing)
 		end
 
 		-- consume the item
-		user:get_inventory():remove_item("main", daten[1].." 1")
+		user:get_inventory():remove_item("main", nnd.name.." 1")
 	end
 
-	--minetest.place_node(pos, {name = item["metadata"]})
-	minetest.add_node(pos,
-		{name = daten[1], param1 = daten[2], param2 = daten[3]})
+	--minetest.place_node(pos, nnd)
+	minetest.add_node(pos, nnd)
 	return
 end
 
