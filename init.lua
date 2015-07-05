@@ -73,7 +73,7 @@ local function get_data(item)
 			param1=tonumber(daten[2]) or 0,
 			param2=tonumber(daten[3]) or 0
 		},
-		mode_infos[daten[4] or ""] or "single"
+		mode_infos[daten[4] or ""] and daten[4] or "single"
 end
 
 local function set_data(itemstack, node, mode)
