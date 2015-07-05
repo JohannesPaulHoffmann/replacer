@@ -61,6 +61,11 @@ local function inform(name, msg)
 	minetest.log("info", "[replacer] "..name..": "..msg)
 end
 
+local mode_infos = {
+	single = "Replace single node.",
+	field = "Replace field of nodes.",
+}
+
 local function get_data(item)
 	local daten = (item and item.metadata and item.metadata:split" ") or {}
 	return {
@@ -68,13 +73,13 @@ local function get_data(item)
 			param1=tonumber(daten[2]) or 0,
 			param2=tonumber(daten[3]) or 0
 		},
-		tonumber(daten[4]) or 0
+		mode_infos[daten[4] or ""] or "single"
 end
 
 local function set_data(itemstack, node, mode)
 	local metadata = (node.name or"default:dirt") .." "
 		..(node.param1 or 0).." "..(node.param2 or 0)
-		.." "..(mode or 0)
+		.." "..(mode or "single")
 	itemstack:set_metadata(metadata)
 	return metadata
 end
@@ -98,9 +103,14 @@ minetest.register_tool("replacer:replacer", {
 		if keys.aux1 then
 			local item = itemstack:to_table()
 			local node, mode = get_data(item)
-			mode = (mode+1)%2
+			if mode == "single" then
+				mode = "field"
+			else
+				mode = "single"
+			end
 			set_data(item, node, mode)
 			itemstack:replace(item)
+			inform(name, "Mode changed to: "..mode_infos[mode])
 			return itemstack
 		end
 
@@ -157,7 +167,7 @@ local function get_ps(pos, name, pname, adps, max)
 				p2 = vector.add(p, p2)
 				local pstr = p2.x.." "..p2.y.." "..p2.z
 				if not tab_avoid[pstr]
-				and replaceable(pos, name, pname) then
+				and replaceable(p2, name, pname) then
 					tab[num] = p2
 					tab_avoid[pstr] = true
 					num = num+1
@@ -171,7 +181,7 @@ local function get_ps(pos, name, pname, adps, max)
 			todo[n] = nil
 		end
 	end
-	return tab, num
+	return tab, num-1
 end
 
 function replacer.replace(itemstack, user, pt, above)
@@ -222,7 +232,7 @@ function replacer.replace(itemstack, user, pt, above)
 		return
 	end
 
-	if mode == 1 then
+	if mode == "field" then
 		-- area replacing
 
 		-- get connected positions
@@ -230,19 +240,20 @@ function replacer.replace(itemstack, user, pt, above)
 		local adps = {}
 		for _,i in pairs{"x", "y", "z"} do
 			if pdif[i] == 0 then
-				local p = {x=0, y=0, z=0}
 				for a = -1,1,2 do
+					local p = {x=0, y=0, z=0}
 					p[i] = a
 					adps[#adps+1] = p
 				end
 			end
 		end
-
-		local ps,num = get_ps(pt.under, nnd.name, name, adps, 5)
+		local ps,num = get_ps(pt.under, node.name, name, adps, 8799)
 		if not ps then
-			inform(name, "Aborted, too many nodes found.")
+			inform(name, "Aborted, too many nodes detected.")
 			return
 		end
+
+		-- set nodes
 		for _,pos in pairs(ps) do
 			minetest.set_node(pos, nnd)
 		end
