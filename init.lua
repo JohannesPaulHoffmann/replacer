@@ -64,7 +64,13 @@ end
 local mode_infos = {
 	single = "Replace single node.",
 	field = "Replace field of nodes.",
+	crust = "Replace nodes touching each other and translucent.",
+	chunkborder = "Replace mantle of nodes touching each other.",
 }
+local modes = {"single", "field", "crust", "chunkborder"}
+for n,i in ipairs(modes) do
+	modes[i] = n
+end
 
 local function get_data(item)
 	local daten = (item and item.metadata and item.metadata:split" ") or {}
@@ -73,13 +79,13 @@ local function get_data(item)
 			param1=tonumber(daten[2]) or 0,
 			param2=tonumber(daten[3]) or 0
 		},
-		mode_infos[daten[4] or ""] and daten[4] or "single"
+		modes[daten[4] or ""] and daten[4] or modes[1]
 end
 
 local function set_data(itemstack, node, mode)
 	local metadata = (node.name or"default:dirt") .." "
 		..(node.param1 or 0).." "..(node.param2 or 0)
-		.." "..(mode or "single")
+		.." "..(mode or modes[1])
 	itemstack:set_metadata(metadata)
 	return metadata
 end
@@ -103,14 +109,10 @@ minetest.register_tool("replacer:replacer", {
 		if keys.aux1 then
 			local item = itemstack:to_table()
 			local node, mode = get_data(item)
-			if mode == "single" then
-				mode = "field"
-			else
-				mode = "single"
-			end
+			mode = modes[modes[mode]%#modes+1]
 			set_data(item, node, mode)
 			itemstack:replace(item)
-			inform(name, "Mode changed to: "..mode_infos[mode])
+			inform(name, "Mode changed to: "..mode..": "..mode_infos[mode])
 			return itemstack
 		end
 
@@ -155,8 +157,113 @@ local function replaceable(pos, name, pname)
 	return true
 end
 
+local trans_nodes = {}
+local function node_translucent(name)
+	if trans_nodes[name] ~= nil then
+		return trans_nodes[name]
+	end
+	local data = minetest.registered_nodes[name]
+	if data
+	and (not data.drawtype or data.drawtype == "normal") then
+		trans_nodes[name] = false
+		return false
+	end
+	trans_nodes[name] = true
+	return true
+end
+
+local function field_position(pos, data)
+	if not replaceable(pos, data.name, data.pname)
+	or node_translucent(minetest.get_node(vector.add(data.above, pos)).name) == data.ptab then
+		return false
+	end
+	return true
+end
+
+local default_adps = {}
+for _,i in pairs({"x", "y", "z"}) do
+	for a = -1,1,2 do
+		local p = {x=0, y=0, z=0}
+		p[i] = a
+		table.insert(default_adps, p)
+	end
+end
+
+local strong_adps = {}
+for x = -1,1 do
+	for y = -1,1 do
+		for z = -1,1 do
+			local p = {x=x, y=y, z=z}
+			if x ~= 0
+			or y ~= 0
+			or z ~= 0 then
+				table.insert(strong_adps, p)
+			end
+		end
+	end
+end
+
+-- avoid replacing nodes behind the crust
+local function crust_above_position(pos, data)
+	local nd = minetest.get_node(pos).name
+	if nd == data.name
+	or data.ptab == node_translucent(nd) then
+		return false
+	end
+	for _,p2 in pairs(strong_adps) do
+		if replaceable(vector.add(pos, p2), data.name, data.pname) then
+			return true
+		end
+	end
+	return false
+end
+
+local function crust_under_position(pos, data)
+	if not replaceable(pos, data.name, data.pname) then
+		return false
+	end
+	for _,p2 in pairs(strong_adps) do
+		local p = vector.add(pos, p2)
+		if data.aboves[p.x.." "..p.y.." "..p.z] then
+			return true
+		end
+	end
+	return false
+end
+
+local function reduce_crust_ps(data)
+	for n,p in pairs(data.ps) do
+		local found
+		for _,p2 in pairs(default_adps) do
+			local p = vector.add(p, p2)
+			if data.aboves[p.x.." "..p.y.." "..p.z] then
+				found = true
+				break
+			end
+		end
+		if not found then
+			data.ps[n] = nil
+			data.num = data.num-1
+		end
+	end
+end
+
+local function mantle_position(pos, data)
+	if not replaceable(pos, data.name, data.pname) then
+		return false
+	end
+	for _,p2 in pairs(default_adps) do
+		local p = vector.add(pos, p2)
+		if minetest.get_node(p).name ~= data.name then
+			return true
+		end
+	end
+	return false
+end
+
 -- finds out positions
-local function get_ps(pos, name, pname, adps, max)
+local function get_ps(pos, fdata, adps, max)
+	adps = adps or default_adps
 	local tab = {}
 	local num = 1
 	local todo = {pos}
@@ -167,7 +274,7 @@ local function get_ps(pos, name, pname, adps, max)
 				p2 = vector.add(p, p2)
 				local pstr = p2.x.." "..p2.y.." "..p2.z
 				if not tab_avoid[pstr]
-				and replaceable(p2, name, pname) then
+				and fdata.func(p2, fdata) then
 					tab[num] = p2
 					tab_avoid[pstr] = true
 					num = num+1
@@ -181,7 +288,7 @@ local function get_ps(pos, name, pname, adps, max)
 			todo[n] = nil
 		end
 	end
-	return tab, num-1
+	return tab, num-1, tab_avoid
 end
 
 function replacer.replace(itemstack, user, pt, above)
@@ -232,22 +339,47 @@ function replacer.replace(itemstack, user, pt, above)
 		return
 	end
 
-	if mode == "field" then
-		-- area replacing
+	if mode ~= "single" then
+		local pos
+		if above then
+			above = true
+			pos = pt.above
+		else
+			above = false
+			pos = pt.under
+		end
 
-		-- get connected positions
-		local pdif = vector.subtract(pt.above, pt.under)
-		local adps = {}
-		for _,i in pairs{"x", "y", "z"} do
-			if pdif[i] == 0 then
-				for a = -1,1,2 do
-					local p = {x=0, y=0, z=0}
-					p[i] = a
-					adps[#adps+1] = p
+		local ps,num
+		if mode == "field" then
+			-- get connected positions for plane field replacing
+			local pdif = vector.subtract(pt.above, pt.under)
+			local adps = {}
+			for _,i in pairs{"x", "y", "z"} do
+				if pdif[i] == 0 then
+					for a = -1,1,2 do
+						local p = {x=0, y=0, z=0}
+						p[i] = a
+						adps[#adps+1] = p
+					end
 				end
 			end
+			if above then
+				pdif = vector.multiply(pdif, -1)
+			end
+			ps,num = get_ps(pos, {func=field_position, name=node.name, pname=name, above=pdif, ptab=above}, adps, 8799)
+		elseif mode == "crust" then
+			local _,_,aboves = get_ps(pt.above, {func=crust_above_position, name=node.name, pname=name, ptab=above}, nil, 8799)
+			if aboves then
+				ps,num = get_ps(pos, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
+				if ps then
+					local data = {aboves=aboves, ps=ps, num=num}
+					reduce_crust_ps(data)
+					ps,num = data.ps, data.num
+				end
+			end
+		elseif mode == "chunkborder" then
+			ps,num = get_ps(pos, {func=mantle_position, name=node.name, pname=name}, nil, 8799)
 		end
-		local ps,num = get_ps(pt.under, node.name, name, adps, 8799)
 		if not ps then
 			inform(name, "Aborted, too many nodes detected.")
 			return
@@ -280,7 +412,7 @@ function replacer.replace(itemstack, user, pt, above)
 
 
 		-- give the player the item by simulating digging if possible
-		if  node.name ~= "default:lava_source"
+		if node.name ~= "default:lava_source"
 		and node.name ~= "default:lava_flowing"
 		and node.name ~= "default:river_water_source"
 		and node.name ~= "default:river_water_flowing"
