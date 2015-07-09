@@ -207,7 +207,7 @@ end
 local function crust_above_position(pos, data)
 	local nd = minetest.get_node(pos).name
 	if nd == data.name
-	or data.ptab == node_translucent(nd) then
+	or not node_translucent(nd) then
 		return false
 	end
 	for _,p2 in pairs(strong_adps) do
@@ -239,6 +239,24 @@ local function reduce_crust_ps(data)
 			if data.aboves[p.x.." "..p.y.." "..p.z] then
 				found = true
 				break
+			end
+		end
+		if not found then
+			data.ps[n] = nil
+			data.num = data.num-1
+		end
+	end
+end
+
+local function reduce_crust_above_ps(data)
+	for n,p in pairs(data.ps) do
+		local found
+		if replaceable(p, "air", data.pname) then
+			for _,p2 in pairs(default_adps) do
+				if replaceable(vector.add(p, p2), data.name, data.pname) then
+					found = true
+					break
+				end
 			end
 		end
 		if not found then
@@ -368,13 +386,20 @@ function replacer.replace(itemstack, user, pt, above)
 			end
 			ps,num = get_ps(pos, {func=field_position, name=node.name, pname=name, above=pdif, ptab=above}, adps, 8799)
 		elseif mode == "crust" then
-			local _,_,aboves = get_ps(pt.above, {func=crust_above_position, name=node.name, pname=name, ptab=above}, nil, 8799)
-			if aboves then
-				ps,num = get_ps(pos, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
-				if ps then
-					local data = {aboves=aboves, ps=ps, num=num}
-					reduce_crust_ps(data)
+			local nodename = minetest.get_node(pt.under).name
+			local aps,n,aboves = get_ps(pt.above, {func=crust_above_position, name=nodename, pname=name}, nil, 8799)
+			if aps then
+				if above then
+					local data = {ps=aps, num=n, name=nodename, pname=name}
+					reduce_crust_above_ps(data)
 					ps,num = data.ps, data.num
+				else
+					ps,num = get_ps(pt.under, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
+					if ps then
+						local data = {aboves=aboves, ps=ps, num=num}
+						reduce_crust_ps(data)
+						ps,num = data.ps, data.num
+					end
 				end
 			end
 		elseif mode == "chunkborder" then
