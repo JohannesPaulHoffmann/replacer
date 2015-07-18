@@ -148,9 +148,35 @@ minetest.register_tool("replacer:replacer", {
 	end,
 })
 
+
+-- don't use minetest.get_node more times for the same position
+local known_nodes = {}
+--[[
+local function remove_node(pos)
+	known_nodes[pos.z .." "..pos.y .." "..pos.x] = {name="air", param2=0}
+	minetest.remove_node(pos)
+end
+
+local function dig_node(pos, node, digger)
+	known_nodes[pos.z .." "..pos.y .." "..pos.x] = {name="air", param2=0}
+	minetest.node_dig(pos, node, digger)
+end--]]
+
+local function get_node(pos)
+	local pstr = pos.z .." "..pos.y .." "..pos.x
+	local node = known_nodes[pstr]
+	if node then
+		return node
+	end
+	node = minetest.get_node(pos)
+	known_nodes[pstr] = node
+	return node
+end
+
+
 -- tests if a node can be replaced
 local function replaceable(pos, name, pname)
-	if minetest.get_node(pos).name ~= name
+	if get_node(pos).name ~= name
 	or minetest.is_protected(pos, pname) then
 		return false
 	end
@@ -174,7 +200,7 @@ end
 
 local function field_position(pos, data)
 	if not replaceable(pos, data.name, data.pname)
-	or node_translucent(minetest.get_node(vector.add(data.above, pos)).name) == data.ptab then
+	or node_translucent(get_node(vector.add(data.above, pos)).name) == data.ptab then
 		return false
 	end
 	return true
@@ -205,7 +231,7 @@ end
 
 -- avoid replacing nodes behind the crust
 local function crust_above_position(pos, data)
-	local nd = minetest.get_node(pos).name
+	local nd = get_node(pos).name
 	if nd == data.name
 	or not node_translucent(nd) then
 		return false
@@ -272,7 +298,7 @@ local function mantle_position(pos, data)
 	end
 	for _,p2 in pairs(default_adps) do
 		local p = vector.add(pos, p2)
-		if minetest.get_node(p).name ~= data.name then
+		if get_node(p).name ~= data.name then
 			return true
 		end
 	end
@@ -386,25 +412,20 @@ function replacer.replace(itemstack, user, pt, above)
 			end
 			ps,num = get_ps(pos, {func=field_position, name=node.name, pname=name, above=pdif, ptab=above}, adps, 8799)
 		elseif mode == "crust" then
-			local nodename = minetest.get_node(pt.under).name
+			local nodename = get_node(pt.under).name
 			local aps,n,aboves = get_ps(pt.above, {func=crust_above_position, name=nodename, pname=name}, nil, 8799)
 			if aps then
 				if above then
 					local data = {ps=aps, num=n, name=nodename, pname=name}
 					reduce_crust_above_ps(data)
 					ps,num = data.ps, data.num
-				else
-					ps,num = get_ps(pt.under, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
-					if ps then
-						local data = {aboves=aboves, ps=ps, num=num}
-						reduce_crust_ps(data)
-						ps,num = data.ps, data.num
-					end
 				end
 			end
-		elseif mode == "chunkborder" then
-			ps,num = get_ps(pos, {func=mantle_position, name=node.name, pname=name}, nil, 8799)
 		end
+
+		-- reset known nodes table
+		known_nodes = {}
+
 		if not ps then
 			inform(name, "Aborted, too many nodes detected.")
 			return
