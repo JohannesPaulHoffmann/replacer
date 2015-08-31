@@ -148,6 +148,8 @@ minetest.register_tool("replacer:replacer", {
 	end,
 })
 
+local set = vector.set_data_to_pos
+local get = vector.get_data_from_pos
 
 -- don't use minetest.get_node more times for the same position
 local known_nodes = {}
@@ -163,13 +165,13 @@ local function dig_node(pos, node, digger)
 end--]]
 
 local function get_node(pos)
-	local pstr = pos.z .." "..pos.y .." "..pos.x
-	local node = known_nodes[pstr]
+	local z,y,x = vector.unpack(pos)
+	local node = get(known_nodes, z,y,x)
 	if node then
 		return node
 	end
 	node = minetest.get_node(pos)
-	known_nodes[pstr] = node
+	set(known_nodes, z,y,x, node)
 	return node
 end
 
@@ -249,8 +251,7 @@ local function crust_under_position(pos, data)
 		return false
 	end
 	for _,p2 in pairs(strong_adps) do
-		local p = vector.add(pos, p2)
-		if data.aboves[p.x.." "..p.y.." "..p.z] then
+		if get(data.aboves, vector.unpack(vector.add(pos, p2))) then
 			return true
 		end
 	end
@@ -261,8 +262,7 @@ local function reduce_crust_ps(data)
 	for n,p in pairs(data.ps) do
 		local found
 		for _,p2 in pairs(default_adps) do
-			local p = vector.add(p, p2)
-			if data.aboves[p.x.." "..p.y.." "..p.z] then
+			if get(data.aboves, vector.unpack(vector.add(p, p2))) then
 				found = true
 				break
 			end
@@ -312,15 +312,15 @@ local function get_ps(pos, fdata, adps, max)
 	local num = 1
 	local todo = {pos}
 	local tab_avoid = {}
-	while todo[1] do
+	while next(todo) do
 		for n,p in pairs(todo) do
 			for _,p2 in pairs(adps) do
 				p2 = vector.add(p, p2)
-				local pstr = p2.x.." "..p2.y.." "..p2.z
-				if not tab_avoid[pstr]
+				local z,y,x = vector.unpack(p2)
+				if not get(tab_avoid, z,y,x)
 				and fdata.func(p2, fdata) then
 					tab[num] = p2
-					tab_avoid[pstr] = true
+					set(tab_avoid, z,y,x, true)
 					num = num+1
 					table.insert(todo, p2)
 					if max
