@@ -251,7 +251,8 @@ local function crust_under_position(pos, data)
 		return false
 	end
 	for _,p2 in pairs(strong_adps) do
-		if get(data.aboves, vector.unpack(vector.add(pos, p2))) then
+		local z,y,x = vector.unpack(vector.add(pos, p2))
+		if get(data.aboves, z,y,x) then
 			return true
 		end
 	end
@@ -262,7 +263,8 @@ local function reduce_crust_ps(data)
 	for n,p in pairs(data.ps) do
 		local found
 		for _,p2 in pairs(default_adps) do
-			if get(data.aboves, vector.unpack(vector.add(p, p2))) then
+			local z,y,x = vector.unpack(vector.add(p, p2))
+			if get(data.aboves, z,y,x) then
 				found = true
 				break
 			end
