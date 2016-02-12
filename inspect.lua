@@ -25,15 +25,12 @@ minetest.register_tool("replacer:inspect",
 	wield_image = "",
 	wield_scale = {x=1,y=1,z=1},
 	liquids_pointable = true, -- it is ok to request information about liquids
-	node_placement_prediction = nil,
 
 	on_use = function(itemstack, user, pointed_thing)
-
 	   return replacer.inspect(itemstack, user, pointed_thing, nil, true); --false)
 	end,
 
 	on_place = function(itemstack, placer, pointed_thing)
-
 	   return replacer.inspect(itemstack, placer, pointed_thing, nil, true)
 	end,
 })

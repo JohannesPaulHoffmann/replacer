@@ -61,7 +61,7 @@ minetest.register_tool("replacer:replacer", {
 	inventory_image = "replacer_replacer.png",
 	stack_max = 1, -- it has to store information - thus only one can be stacked
 	liquids_pointable = true, -- it is ok to painit in/with water
-	--~ node_placement_prediction = nil,
+	--node_placement_prediction = nil,
 	metadata = "default:dirt", -- default replacement: common dirt
 
 	on_place = function(itemstack, placer, pointed_thing)
