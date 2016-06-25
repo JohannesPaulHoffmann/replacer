@@ -35,8 +35,10 @@
 --			* receipe changed
 --			* inventory image added
 
+local path = minetest.get_modpath"replacer"
+
 -- adds a function to check ownership of a node; taken from VanessaEs homedecor mod
-dofile(minetest.get_modpath("replacer").."/check_owner.lua")
+dofile(path.."/check_owner.lua")
 
 replacer = {}
 
@@ -54,7 +56,7 @@ replacer.blacklist[ "protector:protect"] = true;
 replacer.blacklist[ "protector:protect2"] = true;
 
 -- adds a tool for inspecting nodes and entities
-dofile(minetest.get_modpath("replacer").."/inspect.lua")
+dofile(path.."/inspect.lua")
 
 local function inform(name, msg)
 	minetest.chat_send_player(name, msg)
@@ -73,19 +75,20 @@ for n,i in ipairs(modes) do
 end
 
 local function get_data(item)
-	local daten = (item and item.metadata and item.metadata:split" ") or {}
+	local daten = item and item.metadata and item.metadata:split" " or {}
 	return {
-			name=daten[1] or "default:dirt",
-			param1=tonumber(daten[2]) or 0,
-			param2=tonumber(daten[3]) or 0
+			name = daten[1] or "default:dirt",
+			param1 = tonumber(daten[2]) or 0,
+			param2 = tonumber(daten[3]) or 0
 		},
 		modes[daten[4] or ""] and daten[4] or modes[1]
 end
 
 local function set_data(itemstack, node, mode)
-	local metadata = (node.name or"default:dirt") .." "
-		..(node.param1 or 0).." "..(node.param2 or 0)
-		.." "..(mode or modes[1])
+	local metadata = (node.name or "default:dirt") .. " "
+		.. (node.param1 or 0) .. " "
+		.. (node.param2 or 0) .." "
+		.. (mode or modes[1])
 	itemstack:set_metadata(metadata)
 	return metadata
 end
@@ -209,11 +212,11 @@ local function field_position(pos, data)
 end
 
 local default_adps = {}
-for _,i in pairs({"x", "y", "z"}) do
+for _,i in pairs{"x", "y", "z"} do
 	for a = -1,1,2 do
 		local p = {x=0, y=0, z=0}
 		p[i] = a
-		table.insert(default_adps, p)
+		default_adps[#default_adps+1] = p
 	end
 end
 
@@ -225,7 +228,7 @@ for x = -1,1 do
 			if x ~= 0
 			or y ~= 0
 			or z ~= 0 then
-				table.insert(strong_adps, p)
+				strong_adps[#strong_adps+1] = p
 			end
 		end
 	end
@@ -310,28 +313,39 @@ end
 -- finds out positions
 local function get_ps(pos, fdata, adps, max)
 	adps = adps or default_adps
+
 	local tab = {}
 	local num = 1
+
 	local todo = {pos}
+	local ti = 1
+
 	local tab_avoid = {}
-	while next(todo) do
-		for n,p in pairs(todo) do
-			for _,p2 in pairs(adps) do
-				p2 = vector.add(p, p2)
-				local z,y,x = vector.unpack(p2)
-				if not get(tab_avoid, z,y,x)
-				and fdata.func(p2, fdata) then
-					tab[num] = p2
-					set(tab_avoid, z,y,x, true)
-					num = num+1
-					table.insert(todo, p2)
-					if max
-					and num > max then
-						return false
-					end
+
+	while ti ~= 0 do
+		local p = todo[ti]
+		todo[ti] = nil
+		ti = ti-1
+
+		for _,p2 in pairs(adps) do
+			p2 = vector.add(p, p2)
+			local z,y,x = vector.unpack(p2)
+			if not get(tab_avoid, z,y,x)
+			and fdata.func(p2, fdata) then
+
+				tab[num] = p2
+				num = num+1
+
+				ti = ti+1
+				todo[ti] = p2
+
+				set(tab_avoid, z,y,x, true)
+
+				if max
+				and num > max then
+					return false
 				end
 			end
-			todo[n] = nil
 		end
 	end
 	return tab, num-1, tab_avoid
@@ -399,13 +413,14 @@ function replacer.replace(itemstack, user, pt, above)
 		if mode == "field" then
 			-- get connected positions for plane field replacing
 			local pdif = vector.subtract(pt.above, pt.under)
-			local adps = {}
+			local adps,n = {},1
 			for _,i in pairs{"x", "y", "z"} do
 				if pdif[i] == 0 then
 					for a = -1,1,2 do
 						local p = {x=0, y=0, z=0}
 						p[i] = a
-						adps[#adps+1] = p
+						adps[n] = p
+						n = n+1
 					end
 				end
 			end
