@@ -108,6 +108,7 @@ minetest.register_tool("replacer:replacer", {
 		end
 
 		local keys = placer:get_player_control()
+		local name = placer:get_player_name()
 
 		if keys.aux1 then
 			local item = itemstack:to_table()
@@ -124,7 +125,6 @@ minetest.register_tool("replacer:replacer", {
 			return replacer.replace(itemstack, placer, pt, true)
 		end
 
-		local name = placer:get_player_name()
 
 		if pt.type ~= "node" then
 			inform(name, "Error: No node selected.")
@@ -351,14 +351,62 @@ local function get_ps(pos, fdata, adps, max)
 	return tab, num-1, tab_avoid
 end
 
+local creative = minetest.setting_getbool"creative_mode" -- rebase artifact
+
+-- replaces one node with another one and returns if it was successful
+local function replace_single_node(pos, node, nnd, user, name, inv)
+	if minetest.is_protected(pos, name) then
+		return false, "Protected at "..minetest.pos_to_string(pos)
+	end
+
+	-- do not replace if there is nothing to be done
+	if node.name == nnd.name then
+		-- only the orientation was changed
+		if node.param1 ~= nnd.param1
+		or node.param2 ~= nnd.param2 then
+			minetest.set_node(pos, nnd)
+		end
+		return true
+	end
+
+	-- does the player carry at least one of the desired nodes with him?
+	if not creative
+	and not inv:contains_item("main", nnd.name) then
+		return false, "You have no further '"..(nnd.name or "?").."'. Replacement failed."
+	end
+
+	-- give the player the item by simulating digging if possible
+	local def = minetest.registered_nodes[node.name]
+	if not def then
+		return false, "Unknown node: "..node.name
+	end
+
+	if not def.buildable_to then
+
+		minetest.node_dig(pos, node, user)
+
+		local dug_node = minetest.get_node_or_nil(pos)
+		if not dug_node
+		or dug_node.name == node.name then
+			return false, "Replacing '".. node.name .."' with '"..dump(nnd).."' failed. Unable to remove old node."
+		end
+
+	end
+
+	if not creative then
+		-- consume the item
+		inv:remove_item("main", nnd.name.." 1")
+	end
+
+	--minetest.place_node(pos, nnd)
+	minetest.add_node(pos, nnd)
+	return true
+end
+
+-- the function which happens when the replacer is used
 function replacer.replace(itemstack, user, pt, above)
 	if not user
 	or not pt then
-		return
-	end
-
-	-- if someone else owns that node then we can not change it
-	if replacer_homedecor_node_is_owned(pos, user) then
 		return
 	end
 
@@ -387,93 +435,16 @@ function replacer.replace(itemstack, user, pt, above)
 		return
 	end
 
-	if replacer.blacklist[daten[1]] then
+	if replacer.blacklist[nnd.name] then
 		minetest.chat_send_player(name, "Placing blocks of the type '" ..
-			daten[1] ..
+			nnd.name ..
 			"' with the replacer is not allowed on this server. " ..
 			"Replacement failed.")
 		return
 	end
 
-	-- do not replace if there is nothing to be done
-	if node.name == nnd.name then
-		-- only the orientation was changed
-		if node.param1 ~= nnd.param1
-		or node.param2 ~= nnd.param2 then
-			minetest.set_node(pos, nnd)
-		end
-		return
-	end
-
-	if mode ~= "single" then
-		local pos
-		if above then
-			above = true
-			pos = pt.above
-		else
-			above = false
-			pos = pt.under
-		end
-
-		local ps,num
-		if mode == "field" then
-			-- get connected positions for plane field replacing
-			local pdif = vector.subtract(pt.above, pt.under)
-			local adps,n = {},1
-			for _,i in pairs{"x", "y", "z"} do
-				if pdif[i] == 0 then
-					for a = -1,1,2 do
-						local p = {x=0, y=0, z=0}
-						p[i] = a
-						adps[n] = p
-						n = n+1
-					end
-				end
-			end
-			if above then
-				pdif = vector.multiply(pdif, -1)
-			end
-			ps,num = get_ps(pos, {func=field_position, name=node.name, pname=name, above=pdif, ptab=above}, adps, 8799)
-		elseif mode == "crust" then
-			local nodename = get_node(pt.under).name
-			local aps,n,aboves = get_ps(pt.above, {func=crust_above_position, name=nodename, pname=name}, nil, 8799)
-			if aps then
-				if above then
-					local data = {ps=aps, num=n, name=nodename, pname=name}
-					reduce_crust_above_ps(data)
-					ps,num = data.ps, data.num
-				else
-					ps,num = get_ps(pt.under, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
-					if ps then
-						local data = {aboves=aboves, ps=ps, num=num}
-						reduce_crust_ps(data)
-						ps,num = data.ps, data.num
-					end
-				end
-			end
-		elseif mode == "chunkborder" then
-			ps,num = get_ps(pos, {func=mantle_position, name=node.name, pname=name}, nil, 8799)
-		end
-
-		-- reset known nodes table
-		known_nodes = {}
-
-		if not ps then
-			inform(name, "Aborted, too many nodes detected.")
-			return
-		end
-
-		-- set nodes
-		for _,pos in pairs(ps) do
-			minetest.set_node(pos, nnd)
-		end
-		inform(name, num.." nodes replaced.")
-		return
-	end
-
 	-- in survival mode, the player has to provide the node he wants to be placed
-	if not minetest.setting_getbool"creative_mode"
-	and not minetest.check_player_privs(name, {creative=true}) then
+	if not creative then
 
 		-- players usually don't carry dirt_with_grass around; it's safe to assume normal dirt here
 		-- fortionately, dirt and dirt_with_grass does not make use of rotation
@@ -481,40 +452,84 @@ function replacer.replace(itemstack, user, pt, above)
 			nnd.name = "default:dirt"
 			item.metadata = "default:dirt 0 0 0"
 		end
-
-		-- does the player carry at least one of the desired nodes with him?
-		if not user:get_inventory():contains_item("main", nnd.name) then
-			inform(name, "You have no further '"..(nnd.name or "?").."'. Replacement failed.")
-			return
-		end
-
-
-		-- give the player the item by simulating digging if possible
-		if node.name ~= "default:lava_source"
-		and node.name ~= "default:lava_flowing"
-		and node.name ~= "default:river_water_source"
-		and node.name ~= "default:river_water_flowing"
-		and node.name ~= "default:water_source"
-		and node.name ~= "default:water_flowing" then
-
-			minetest.node_dig(pos, node, user)
-
-			local dug_node = minetest.get_node_or_nil(pos)
-			if not dug_node
-			or dug_node.name == node.name then
-				inform(name, "Replacing '"..(node.name or "air").."' with '"..(item.metadata or "?").."' failed. Unable to remove old node.")
-				return
-			end
-
-		end
-
-		-- consume the item
-		user:get_inventory():remove_item("main", nnd.name.." 1")
 	end
 
-	--minetest.place_node(pos, nnd)
-	minetest.add_node(pos, nnd)
-	return
+	if mode == "single" then
+		local succ,err = replace_single_node(pos, node, nnd, user, name, user:get_inventory())
+
+		if not succ then
+			inform(name, err)
+		end
+		return
+	end
+
+	local pos
+	if above then
+		above = true
+		pos = pt.above
+	else
+		above = false
+		pos = pt.under
+	end
+
+	local ps,num
+	if mode == "field" then
+		-- get connected positions for plane field replacing
+		local pdif = vector.subtract(pt.above, pt.under)
+		local adps,n = {},1
+		for _,i in pairs{"x", "y", "z"} do
+			if pdif[i] == 0 then
+				for a = -1,1,2 do
+					local p = {x=0, y=0, z=0}
+					p[i] = a
+					adps[n] = p
+					n = n+1
+				end
+			end
+		end
+		if above then
+			pdif = vector.multiply(pdif, -1)
+		end
+		ps,num = get_ps(pos, {func=field_position, name=node.name, pname=name, above=pdif, ptab=above}, adps, 8799)
+	elseif mode == "crust" then
+		local nodename = get_node(pt.under).name
+		local aps,n,aboves = get_ps(pt.above, {func=crust_above_position, name=nodename, pname=name}, nil, 8799)
+		if aps then
+			if above then
+				local data = {ps=aps, num=n, name=nodename, pname=name}
+				reduce_crust_above_ps(data)
+				ps,num = data.ps, data.num
+			else
+				ps,num = get_ps(pt.under, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
+				if ps then
+					local data = {aboves=aboves, ps=ps, num=num}
+					reduce_crust_ps(data)
+					ps,num = data.ps, data.num
+				end
+			end
+		end
+	elseif mode == "chunkborder" then
+		ps,num = get_ps(pos, {func=mantle_position, name=node.name, pname=name}, nil, 8799)
+	end
+
+	-- reset known nodes table
+	known_nodes = {}
+
+	if not ps then
+		inform(name, "Aborted, too many nodes detected.")
+		return
+	end
+
+	-- set nodes
+	local inv = user:get_inventory()
+	for _,pos in pairs(ps) do
+		local succ,err = replace_single_node(pos, minetest.get_node(pos), nnd, user, name, inv)
+		if not succ then
+			inform(name, err)
+			return
+		end
+	end
+	inform(name, num.." nodes replaced.")
 end
 
 
