@@ -356,6 +356,12 @@ function replacer.replace(itemstack, user, pt, above)
 	or not pt then
 		return
 	end
+
+	-- if someone else owns that node then we can not change it
+	if replacer_homedecor_node_is_owned(pos, user) then
+		return
+	end
+
 	local name = user:get_player_name()
 
 	if pt.type ~= "node" then
@@ -436,6 +442,13 @@ function replacer.replace(itemstack, user, pt, above)
 					local data = {ps=aps, num=n, name=nodename, pname=name}
 					reduce_crust_above_ps(data)
 					ps,num = data.ps, data.num
+				else
+					ps,num = get_ps(pt.under, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
+					if ps then
+						local data = {aboves=aboves, ps=ps, num=num}
+						reduce_crust_ps(data)
+						ps,num = data.ps, data.num
+					end
 				end
 			end
 		elseif mode == "chunkborder" then
