@@ -438,6 +438,8 @@ function replacer.replace(itemstack, user, pt, above)
 					ps,num = data.ps, data.num
 				end
 			end
+		elseif mode == "chunkborder" then
+			ps,num = get_ps(pos, {func=mantle_position, name=node.name, pname=name}, nil, 8799)
 		end
 
 		-- reset known nodes table
