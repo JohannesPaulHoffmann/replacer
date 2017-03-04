@@ -89,6 +89,9 @@ local function set_data(itemstack, node, mode)
 		.. (node.param1 or 0) .. " "
 		.. (node.param2 or 0) .." "
 		.. (mode or modes[1])
+	--~ local item = itemstack:to_table()
+	--~ item.metadata = metadata
+	--~ itemstack:replace(item)
 	itemstack:set_metadata(metadata)
 	return metadata
 end
@@ -114,8 +117,7 @@ minetest.register_tool("replacer:replacer", {
 			local item = itemstack:to_table()
 			local node, mode = get_data(item)
 			mode = modes[modes[mode]%#modes+1]
-			set_data(item, node, mode)
-			itemstack:replace(item)
+			set_data(itemstack, node, mode)
 			inform(name, "Mode changed to: "..mode..": "..mode_infos[mode])
 			return itemstack
 		end
