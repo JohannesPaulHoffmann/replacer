@@ -70,8 +70,8 @@ local mode_infos = {
 	chunkborder = "Replace mantle of nodes touching each other.",
 }
 local modes = {"single", "field", "crust", "chunkborder"}
-for n,i in ipairs(modes) do
-	modes[i] = n
+for n = 1,#modes do
+	modes[modes[n]] = n
 end
 
 local function get_data(item)
