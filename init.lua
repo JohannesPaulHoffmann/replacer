@@ -67,7 +67,7 @@ local mode_infos = {
 	single = "Replace single node.",
 	field = "Left click: Replace field of nodes of a kind where a translucent node is in front of it. Right click: Replace field of air where no translucent node is behind the air.",
 	crust = "Left click: Replace nodes which touch another one of its kind and a translucent node, e.g. air. Right click: Replace air nodes which touch the crust",
-	chunkborder = "Replace mantle of nodes touching each other.",
+	chunkborder = "TODO",
 }
 local modes = {"single", "field", "crust", "chunkborder"}
 for n = 1,#modes do
