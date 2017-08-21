@@ -65,8 +65,8 @@ end
 
 local mode_infos = {
 	single = "Replace single node.",
-	field = "Replace field of nodes.",
-	crust = "Replace nodes touching each other and translucent.",
+	field = "Left click: Replace field of nodes of a kind where a translucent node is in front of it. Right click: Replace field of air where no translucent node is behind the air.",
+	crust = "Left click: Replace nodes which touch another one of its kind and a translucent node, e.g. air. Right click: Replace air nodes which touch the crust",
 	chunkborder = "Replace mantle of nodes touching each other.",
 }
 local modes = {"single", "field", "crust", "chunkborder"}
@@ -114,6 +114,7 @@ minetest.register_tool("replacer:replacer", {
 		local name = placer:get_player_name()
 
 		if keys.aux1 then
+			-- Change Mode when holding the fast key
 			local item = itemstack:to_table()
 			local node, mode = get_data(item)
 			mode = modes[modes[mode]%#modes+1]
@@ -122,12 +123,12 @@ minetest.register_tool("replacer:replacer", {
 			return itemstack
 		end
 
-		-- just place the stored node if now new one is to be selected
+		-- If not holding shift, place node(s)
 		if not keys.sneak then
 			return replacer.replace(itemstack, placer, pt, true)
 		end
 
-
+		-- Select new node
 		if pt.type ~= "node" then
 			inform(name, "Error: No node selected.")
 			return
@@ -149,45 +150,30 @@ minetest.register_tool("replacer:replacer", {
 --	on_drop = func(itemstack, dropper, pos),
 
 	on_use = function(...)
+		-- Replace nodes
 		return replacer.replace(...)
 	end,
 })
 
-local set = vector.set_data_to_pos
-local get = vector.get_data_from_pos
+local poshash = minetest.hash_node_position
 
--- don't use minetest.get_node more times for the same position
+-- cache results of minetest.get_node
 local known_nodes = {}
---[[
-local function remove_node(pos)
-	known_nodes[pos.z .." "..pos.y .." "..pos.x] = {name="air", param2=0}
-	minetest.remove_node(pos)
-end
-
-local function dig_node(pos, node, digger)
-	known_nodes[pos.z .." "..pos.y .." "..pos.x] = {name="air", param2=0}
-	minetest.node_dig(pos, node, digger)
-end--]]
-
 local function get_node(pos)
-	local z,y,x = vector.unpack(pos)
-	local node = get(known_nodes, z,y,x)
+	local i = poshash(pos)
+	local node = known_nodes[i]
 	if node then
 		return node
 	end
 	node = minetest.get_node(pos)
-	set(known_nodes, z,y,x, node)
+	known_nodes[i] = node
 	return node
 end
 
-
--- tests if a node can be replaced
+-- tests if there's a node at pos which should be replaced
 local function replaceable(pos, name, pname)
-	if get_node(pos).name ~= name
-	or minetest.is_protected(pos, pname) then
-		return false
-	end
-	return true
+	return get_node(pos).name == name
+		and not minetest.is_protected(pos, pname)
 end
 
 local trans_nodes = {}
@@ -206,23 +192,22 @@ local function node_translucent(name)
 end
 
 local function field_position(pos, data)
-	if not replaceable(pos, data.name, data.pname)
-	or node_translucent(get_node(vector.add(data.above, pos)).name) == data.ptab then
-		return false
-	end
-	return true
+	return replaceable(pos, data.name, data.pname)
+		and node_translucent(
+			get_node(vector.add(data.above, pos)).name) ~= data.right_clicked
 end
 
-local default_adps = {}
-for _,i in pairs{"x", "y", "z"} do
-	for a = -1,1,2 do
-		local p = {x=0, y=0, z=0}
-		p[i] = a
-		default_adps[#default_adps+1] = p
-	end
-end
+local offsets_touch = {
+	{x=-1, y=0, z=0},
+	{x=1, y=0, z=0},
+	{x=0, y=-1, z=0},
+	{x=0, y=1, z=0},
+	{x=0, y=0, z=-1},
+	{x=0, y=0, z=1},
+}
 
-local strong_adps = {}
+-- 3x3x3 hollow cube
+local offsets_hollowcube = {}
 for x = -1,1 do
 	for y = -1,1 do
 		for z = -1,1 do
@@ -230,20 +215,23 @@ for x = -1,1 do
 			if x ~= 0
 			or y ~= 0
 			or z ~= 0 then
-				strong_adps[#strong_adps+1] = p
+				offsets_hollowcube[#offsets_hollowcube+1] = p
 			end
 		end
 	end
 end
 
--- avoid replacing nodes behind the crust
+-- To get the crust, firstly nodes near it need to be collected
 local function crust_above_position(pos, data)
+	-- test if the node at pos is a translucent node and not part of the crust
 	local nd = get_node(pos).name
 	if nd == data.name
 	or not node_translucent(nd) then
 		return false
 	end
-	for _,p2 in pairs(strong_adps) do
+	-- test if a node of the crust is near pos
+	for i = 1,26 do
+		local p2 = offsets_hollowcube[i]
 		if replaceable(vector.add(pos, p2), data.name, data.pname) then
 			return true
 		end
@@ -251,73 +239,78 @@ local function crust_above_position(pos, data)
 	return false
 end
 
+-- used to get nodes the crust belongs to
 local function crust_under_position(pos, data)
 	if not replaceable(pos, data.name, data.pname) then
 		return false
 	end
-	for _,p2 in pairs(strong_adps) do
-		local z,y,x = vector.unpack(vector.add(pos, p2))
-		if get(data.aboves, z,y,x) then
+	for i = 1,26 do
+		local p2 = offsets_hollowcube[i]
+		if data.aboves[poshash(vector.add(pos, p2))] then
 			return true
 		end
 	end
 	return false
 end
 
+-- extract the crust from the nodes the crust belongs to
 local function reduce_crust_ps(data)
-	for n,p in pairs(data.ps) do
-		local found
-		for _,p2 in pairs(default_adps) do
-			local z,y,x = vector.unpack(vector.add(p, p2))
-			if get(data.aboves, z,y,x) then
-				found = true
+	local newps = {}
+	local n = 0
+	for i = 1,data.num do
+		local p = data.ps[i]
+		for i = 1,6 do
+			local p2 = offsets_touch[i]
+			if data.aboves[poshash(vector.add(p, p2))] then
+				n = n+1
+				newps[n] = p
 				break
 			end
 		end
-		if not found then
-			data.ps[n] = nil
-			data.num = data.num-1
-		end
 	end
+	data.ps = newps
+	data.num = n
 end
 
+-- gets the air nodes touching the crust
 local function reduce_crust_above_ps(data)
-	for n,p in pairs(data.ps) do
-		local found
+	local newps = {}
+	local n = 0
+	for i = 1,data.num do
+		local p = data.ps[i]
 		if replaceable(p, "air", data.pname) then
-			for _,p2 in pairs(default_adps) do
+			for i = 1,6 do
+				local p2 = offsets_touch[i]
 				if replaceable(vector.add(p, p2), data.name, data.pname) then
-					found = true
+					n = n+1
+					newps[n] = p
 					break
 				end
 			end
 		end
-		if not found then
-			data.ps[n] = nil
-			data.num = data.num-1
-		end
 	end
+	data.ps = newps
+	data.num = n
 end
 
 local function mantle_position(pos, data)
 	if not replaceable(pos, data.name, data.pname) then
 		return false
 	end
-	for _,p2 in pairs(default_adps) do
-		local p = vector.add(pos, p2)
-		if get_node(p).name ~= data.name then
+	for i = 1,6 do
+		if get_node(vector.add(pos, offsets_touch[i])).name ~= data.name then
 			return true
 		end
 	end
 	return false
 end
 
--- finds out positions
+-- finds out positions using depth first search
 local function get_ps(pos, fdata, adps, max)
-	adps = adps or default_adps
+	adps = adps or offsets_touch
 
 	local tab = {}
-	local num = 1
+	local num = 0
 
 	local todo = {pos}
 	local ti = 1
@@ -326,31 +319,31 @@ local function get_ps(pos, fdata, adps, max)
 
 	while ti ~= 0 do
 		local p = todo[ti]
-		todo[ti] = nil
+		--~ todo[ti] = nil
 		ti = ti-1
 
 		for _,p2 in pairs(adps) do
 			p2 = vector.add(p, p2)
-			local z,y,x = vector.unpack(p2)
-			if not get(tab_avoid, z,y,x)
+			local i = poshash(p2)
+			if not tab_avoid[i]
 			and fdata.func(p2, fdata) then
 
-				tab[num] = p2
 				num = num+1
+				tab[num] = p2
 
 				ti = ti+1
 				todo[ti] = p2
 
-				set(tab_avoid, z,y,x, true)
+				tab_avoid[i] = true
 
 				if max
-				and num > max then
+				and num >= max then
 					return false
 				end
 			end
 		end
 	end
-	return tab, num-1, tab_avoid
+	return tab, num, tab_avoid
 end
 
 local creative = minetest.setting_getbool"creative_mode" -- rebase artifact
@@ -374,7 +367,8 @@ local function replace_single_node(pos, node, nnd, user, name, inv)
 	-- does the player carry at least one of the desired nodes with him?
 	if not creative
 	and not inv:contains_item("main", nnd.name) then
-		return false, "You have no further '"..(nnd.name or "?").."'. Replacement failed."
+		return false, "You have no further '"..(nnd.name or "?")..
+			"'. Replacement failed."
 	end
 
 	-- give the player the item by simulating digging if possible
@@ -390,7 +384,8 @@ local function replace_single_node(pos, node, nnd, user, name, inv)
 		local dug_node = minetest.get_node_or_nil(pos)
 		if not dug_node
 		or dug_node.name == node.name then
-			return false, "Replacing '".. node.name .."' with '"..dump(nnd).."' failed. Unable to remove old node."
+			return false, "Replacing '".. node.name .."' with '"..dump(nnd)..
+				"' failed. Unable to remove old node."
 		end
 
 	end
@@ -406,7 +401,7 @@ local function replace_single_node(pos, node, nnd, user, name, inv)
 end
 
 -- the function which happens when the replacer is used
-function replacer.replace(itemstack, user, pt, above)
+function replacer.replace(itemstack, user, pt, right_clicked)
 	if not user
 	or not pt then
 		return
@@ -415,20 +410,27 @@ function replacer.replace(itemstack, user, pt, above)
 	local name = user:get_player_name()
 
 	if pt.type ~= "node" then
-		inform(name, "Error: No node.")
+		inform(name, "Error: " .. pt.type .. " is not a node.")
 		return
 	end
 
-	local pos = minetest.get_pointed_thing_position(pt, above)
-	local node = minetest.get_node_or_nil(pos)
+	local pos = minetest.get_pointed_thing_position(pt, right_clicked)
+	local node_toreplace = minetest.get_node_or_nil(pos)
 
-	if not node then
-		inform(name, "Error: Target node not yet loaded. Please wait a moment for the server to catch up.")
+	if not node_toreplace then
+		inform(name, "Target node not yet loaded. Please wait a " ..
+			"moment for the server to catch up.")
 		return
 	end
 
 	local item = itemstack:to_table()
 	local nnd, mode = get_data(item)
+	if node_toreplace.name == nnd.name
+	and node_toreplace.param1 == nnd.param1
+	and node_toreplace.param2 == nnd.param2 then
+		inform(name, "Nothing to replace.")
+		return
+	end
 
 	if replacer.blacklist[node.name] then
 		minetest.chat_send_player(name, "Replacing blocks of the type '" ..
@@ -448,7 +450,8 @@ function replacer.replace(itemstack, user, pt, above)
 	-- in survival mode, the player has to provide the node he wants to be placed
 	if not creative then
 
-		-- players usually don't carry dirt_with_grass around; it's safe to assume normal dirt here
+		-- players usually don't carry dirt_with_grass around;
+		-- it's safe to assume normal dirt here
 		-- fortionately, dirt and dirt_with_grass does not make use of rotation
 		if nnd.name == "default:dirt_with_grass" then
 			nnd.name = "default:dirt"
@@ -457,21 +460,13 @@ function replacer.replace(itemstack, user, pt, above)
 	end
 
 	if mode == "single" then
-		local succ,err = replace_single_node(pos, node, nnd, user, name, user:get_inventory())
+		local succ,err = replace_single_node(pos, node_toreplace, nnd, user,
+			name, user:get_inventory())
 
 		if not succ then
 			inform(name, err)
 		end
 		return
-	end
-
-	local pos
-	if above then
-		above = true
-		pos = pt.above
-	else
-		above = false
-		pos = pt.under
 	end
 
 	local ps,num
@@ -489,20 +484,25 @@ function replacer.replace(itemstack, user, pt, above)
 				end
 			end
 		end
-		if above then
+		if right_clicked then
 			pdif = vector.multiply(pdif, -1)
 		end
-		ps,num = get_ps(pos, {func=field_position, name=node.name, pname=name, above=pdif, ptab=above}, adps, 8799)
+		right_clicked = right_clicked and true or false
+		ps,num = get_ps(pos, {func=field_position, name=node_toreplace.name,
+			pname=name, above=pdif, right_clicked=right_clicked}, adps, 8799)
 	elseif mode == "crust" then
-		local nodename = get_node(pt.under).name
-		local aps,n,aboves = get_ps(pt.above, {func=crust_above_position, name=nodename, pname=name}, nil, 8799)
+		local nodename_clicked = get_node(pt.under).name
+		local aps,n,aboves = get_ps(pt.above, {func=crust_above_position,
+			name=nodename_clicked, pname=name}, nil, 8799)
 		if aps then
-			if above then
-				local data = {ps=aps, num=n, name=nodename, pname=name}
+			if right_clicked then
+				local data = {ps=aps, num=n, name=nodename_clicked, pname=name}
 				reduce_crust_above_ps(data)
 				ps,num = data.ps, data.num
 			else
-				ps,num = get_ps(pt.under, {func=crust_under_position, name=node.name, pname=name, aboves=aboves}, strong_adps, 8799)
+				ps,num = get_ps(pt.under, {func=crust_under_position,
+					name=node_toreplace.name, pname=name, aboves=aboves},
+					offsets_hollowcube, 8799)
 				if ps then
 					local data = {aboves=aboves, ps=ps, num=num}
 					reduce_crust_ps(data)
@@ -511,7 +511,8 @@ function replacer.replace(itemstack, user, pt, above)
 			end
 		end
 	elseif mode == "chunkborder" then
-		ps,num = get_ps(pos, {func=mantle_position, name=node.name, pname=name}, nil, 8799)
+		ps,num = get_ps(pos, {func=mantle_position, name=node_toreplace.name,
+			pname=name}, nil, 8799)
 	end
 
 	-- reset known nodes table
@@ -524,8 +525,10 @@ function replacer.replace(itemstack, user, pt, above)
 
 	-- set nodes
 	local inv = user:get_inventory()
-	for _,pos in pairs(ps) do
-		local succ,err = replace_single_node(pos, minetest.get_node(pos), nnd, user, name, inv)
+	for i = 1,num do
+		local pos = ps[i]
+		local succ,err = replace_single_node(pos, minetest.get_node(pos), nnd,
+			user, name, inv)
 		if not succ then
 			inform(name, err)
 			return
