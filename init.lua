@@ -112,8 +112,10 @@ minetest.register_tool("replacer:replacer", {
 
 		local keys = placer:get_player_control()
 		local name = placer:get_player_name()
+		local creative_enabled = creative.is_enabled_for(name)
 
-		if keys.aux1 then
+		if keys.aux1
+		and creative_enabled then
 			-- Change Mode when holding the fast key
 			local item = itemstack:to_table()
 			local node, mode = get_data(item)
@@ -136,6 +138,10 @@ minetest.register_tool("replacer:replacer", {
 
 		local item = itemstack:to_table()
 		local node, mode = get_data(item)
+
+		if not creative_enabled then
+			mode = "single"
+		end
 
 		node = minetest.get_node_or_nil(pt.under) or node
 
@@ -346,10 +352,8 @@ local function get_ps(pos, fdata, adps, max)
 	return tab, num, tab_avoid
 end
 
-local creative = minetest.setting_getbool"creative_mode" -- rebase artifact
-
 -- replaces one node with another one and returns if it was successful
-local function replace_single_node(pos, node, nnd, user, name, inv)
+local function replace_single_node(pos, node, nnd, user, name, inv, creative)
 	if minetest.is_protected(pos, name) then
 		return false, "Protected at "..minetest.pos_to_string(pos)
 	end
@@ -408,6 +412,7 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 	end
 
 	local name = user:get_player_name()
+	local creative_enabled = creative.is_enabled_for(name)
 
 	if pt.type ~= "node" then
 		inform(name, "Error: " .. pt.type .. " is not a node.")
@@ -447,21 +452,20 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 		return
 	end
 
-	-- in survival mode, the player has to provide the node he wants to be placed
-	if not creative then
+	if not creative_enabled then
 
-		-- players usually don't carry dirt_with_grass around;
-		-- it's safe to assume normal dirt here
-		-- fortionately, dirt and dirt_with_grass does not make use of rotation
+		-- players usually don't carry dirt_with_grass around, set it to dirt
 		if nnd.name == "default:dirt_with_grass" then
 			nnd.name = "default:dirt"
 			item.metadata = "default:dirt 0 0 0"
 		end
+
+		mode = "single"
 	end
 
 	if mode == "single" then
 		local succ,err = replace_single_node(pos, node_toreplace, nnd, user,
-			name, user:get_inventory())
+			name, user:get_inventory(), creative_enabled)
 
 		if not succ then
 			inform(name, err)
@@ -528,7 +532,7 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 	for i = 1,num do
 		local pos = ps[i]
 		local succ,err = replace_single_node(pos, minetest.get_node(pos), nnd,
-			user, name, inv)
+			user, name, inv, creative_enabled)
 		if not succ then
 			inform(name, err)
 			return
