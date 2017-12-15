@@ -113,9 +113,11 @@ minetest.register_tool("replacer:replacer", {
 		local keys = placer:get_player_control()
 		local name = placer:get_player_name()
 		local creative_enabled = creative.is_enabled_for(name)
+		local modes_available = creative_enabled
+			and minetest.check_player_privs(name, "give")
 
 		if keys.aux1
-		and creative_enabled then
+		and modes_available then
 			-- Change Mode when holding the fast key
 			local item = itemstack:to_table()
 			local node, mode = get_data(item)
@@ -139,7 +141,7 @@ minetest.register_tool("replacer:replacer", {
 		local item = itemstack:to_table()
 		local node, mode = get_data(item)
 
-		if not creative_enabled then
+		if not modes_available then
 			mode = "single"
 		end
 
@@ -459,8 +461,9 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 			nnd.name = "default:dirt"
 			item.metadata = "default:dirt 0 0 0"
 		end
-
-		mode = "single"
+		if minetest.check_player_privs(name, "give") then
+			mode = "single"
+		end
 	end
 
 	if mode == "single" then
