@@ -69,30 +69,37 @@ local mode_infos = {
 	crust = "Left click: Replace nodes which touch another one of its kind and a translucent node, e.g. air. Right click: Replace air nodes which touch the crust",
 	chunkborder = "TODO",
 }
+local mode_colours = {
+	single = "#ffffff",
+	field = "#54FFAC",
+	crust = "#9F6200",
+	chunkborder = "#FF5457",
+}
 local modes = {"single", "field", "crust", "chunkborder"}
 for n = 1,#modes do
 	modes[modes[n]] = n
 end
 
-local function get_data(item)
-	local daten = item and item.metadata and item.metadata:split" " or {}
+local function get_data(stack)
+	local daten = stack:get_meta():get_string"replacer":split" " or {}
 	return {
 			name = daten[1] or "default:dirt",
 			param1 = tonumber(daten[2]) or 0,
 			param2 = tonumber(daten[3]) or 0
 		},
-		modes[daten[4] or ""] and daten[4] or modes[1]
+		modes[daten[4]] and daten[4] or modes[1]
 end
 
-local function set_data(itemstack, node, mode)
+local function set_data(stack, node, mode)
+	mode = mode or modes[1]
 	local metadata = (node.name or "default:dirt") .. " "
 		.. (node.param1 or 0) .. " "
 		.. (node.param2 or 0) .." "
-		.. (mode or modes[1])
-	--~ local item = itemstack:to_table()
-	--~ item.metadata = metadata
-	--~ itemstack:replace(item)
-	itemstack:set_metadata(metadata)
+		.. mode
+	local meta = stack:get_meta()
+	meta:set_string("replacer", metadata)
+	meta:set_string("color", mode_colours[mode])
+	stack:set_metadata(metadata)
 	return metadata
 end
 
@@ -119,8 +126,7 @@ minetest.register_tool("replacer:replacer", {
 		if keys.aux1
 		and modes_available then
 			-- Change Mode when holding the fast key
-			local item = itemstack:to_table()
-			local node, mode = get_data(item)
+			local node, mode = get_data(itemstack)
 			mode = modes[modes[mode]%#modes+1]
 			set_data(itemstack, node, mode)
 			inform(name, "Mode changed to: "..mode..": "..mode_infos[mode])
@@ -138,8 +144,7 @@ minetest.register_tool("replacer:replacer", {
 			return
 		end
 
-		local item = itemstack:to_table()
-		local node, mode = get_data(item)
+		local node, mode = get_data(itemstack)
 
 		if not modes_available then
 			mode = "single"
@@ -430,8 +435,7 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 		return
 	end
 
-	local item = itemstack:to_table()
-	local nnd, mode = get_data(item)
+	local nnd, mode = get_data(itemstack)
 	if node_toreplace.name == nnd.name
 	and node_toreplace.param1 == nnd.param1
 	and node_toreplace.param2 == nnd.param2 then
@@ -459,7 +463,7 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 		-- players usually don't carry dirt_with_grass around, set it to dirt
 		if nnd.name == "default:dirt_with_grass" then
 			nnd.name = "default:dirt"
-			item.metadata = "default:dirt 0 0 0"
+			set_data(itemstack, {name="default:dirt"}, "single")
 		end
 		if not minetest.check_player_privs(name, "give") then
 			mode = "single"
