@@ -114,7 +114,7 @@ minetest.register_tool("replacer:replacer", {
 		local name = placer:get_player_name()
 		local creative_enabled = creative.is_enabled_for(name)
 		local modes_available = creative_enabled
-			and minetest.check_player_privs(name, "give")
+			or minetest.check_player_privs(name, "give")
 
 		if keys.aux1
 		and modes_available then
@@ -461,7 +461,7 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 			nnd.name = "default:dirt"
 			item.metadata = "default:dirt 0 0 0"
 		end
-		if minetest.check_player_privs(name, "give") then
+		if not minetest.check_player_privs(name, "give") then
 			mode = "single"
 		end
 	end
