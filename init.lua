@@ -9,20 +9,20 @@
 
 	This program is distributed in the hope that it will be useful,
 	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	See the
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with this program.	If not, see <http://www.gnu.org/licenses/>.
+	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 --]]
 
 -- Version 3.0
 
 -- Changelog:
 -- 09.12.2017 * Got rid of outdated minetest.env
---			* Fixed error in protection function.
---			* Fixed minor bugs.
---			* Added blacklist
+--            * Fixed error in protection function.
+--            * Fixed minor bugs.
+--            * Added blacklist
 -- 02.10.2014 * Some more improvements for inspect-tool. Added craft-guide.
 -- 01.10.2014 * Added inspect-tool.
 -- 12.01.2013 * If digging the node was unsuccessful, then the replacement will now fail
@@ -365,6 +365,13 @@ local function replace_single_node(pos, node, nnd, user, name, inv, creative)
 		return false, "Protected at "..minetest.pos_to_string(pos)
 	end
 
+	if replacer.blacklist[node.name] then
+		return false, "Replacing blocks of the type '" ..
+			node.name ..
+			"' is not allowed on this server. Replacement failed."
+	end
+
+
 	-- do not replace if there is nothing to be done
 	if node.name == nnd.name then
 		-- only the orientation was changed
@@ -440,13 +447,6 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 	and node_toreplace.param1 == nnd.param1
 	and node_toreplace.param2 == nnd.param2 then
 		inform(name, "Nothing to replace.")
-		return
-	end
-
-	if replacer.blacklist[node.name] then
-		minetest.chat_send_player(name, "Replacing blocks of the type '" ..
-			node.name ..
-			"' is not allowed on this server. Replacement failed.")
 		return
 	end
 
