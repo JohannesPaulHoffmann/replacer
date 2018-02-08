@@ -371,13 +371,12 @@ local function replace_single_node(pos, node, nnd, user, name, inv, creative)
 			"' is not allowed on this server. Replacement failed."
 	end
 
-
 	-- do not replace if there is nothing to be done
 	if node.name == nnd.name then
 		-- only the orientation was changed
 		if node.param1 ~= nnd.param1
 		or node.param2 ~= nnd.param2 then
-			minetest.set_node(pos, nnd)
+			minetest.swap_node(pos, nnd)
 		end
 		return true
 	end
@@ -389,32 +388,54 @@ local function replace_single_node(pos, node, nnd, user, name, inv, creative)
 			"'. Replacement failed."
 	end
 
-	-- give the player the item by simulating digging if possible
 	local def = minetest.registered_nodes[node.name]
 	if not def then
 		return false, "Unknown node: "..node.name
 	end
 
+	-- dig the current node if needed
 	if not def.buildable_to then
-
+		-- give the player the item by simulating digging if possible
 		minetest.node_dig(pos, node, user)
-
+		-- test if digging worked
 		local dug_node = minetest.get_node_or_nil(pos)
 		if not dug_node
-		or dug_node.name == node.name then
-			return false, "Replacing '".. node.name .."' with '"..dump(nnd)..
-				"' failed. Unable to remove old node."
+		or not minetest.registered_nodes[dug_node.name].buildable_to then
+			return false, "Couldn't dig '".. node.name .."' properly."
 		end
-
 	end
 
+	-- place the node similar to how a player does it
+	-- (other than the pointed_thing)
+	local newitem, succ = def.on_place(ItemStack(nnd.name), player,
+		{type = "node", under = pos, above = pos})
+	if not succ then
+		return false, "Couldn't place '" .. nnd.name .. "'."
+	end
+
+	-- update inventory in survival mode
 	if not creative then
 		-- consume the item
 		inv:remove_item("main", nnd.name.." 1")
+		-- if placing the node didn't result in empty stack…
+		if newitem:to_string() ~= "" then
+			inv:add_item("main", newitem)
+		end
 	end
 
-	--minetest.place_node(pos, nnd)
-	minetest.add_node(pos, nnd)
+	-- test whether the placed node differs from the supposed node
+	local placed_node = minetest.get_node(pos)
+	if placed_node.name ~= nnd.name then
+		return false, "Placing '".. nnd.name ..
+			"' failed, another node appeared: '" .. placed_node.name .. "'"
+	end
+
+	-- fix orientation if needed
+	if placed_node.param1 ~= nnd.param1
+	or placed_node.param2 ~= nnd.param2 then
+		minetest.swap_node(pos, nnd)
+	end
+
 	return true
 end
 
