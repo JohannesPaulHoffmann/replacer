@@ -360,7 +360,7 @@ local function get_ps(pos, fdata, adps, max)
 end
 
 -- replaces one node with another one and returns if it was successful
-local function replace_single_node(pos, node, nnd, user, name, inv, creative)
+local function replace_single_node(pos, node, nnd, player, name, inv, creative)
 	if minetest.is_protected(pos, name) then
 		return false, "Protected at "..minetest.pos_to_string(pos)
 	end
@@ -396,7 +396,7 @@ local function replace_single_node(pos, node, nnd, user, name, inv, creative)
 	-- dig the current node if needed
 	if not def.buildable_to then
 		-- give the player the item by simulating digging if possible
-		minetest.node_dig(pos, node, user)
+		minetest.node_dig(pos, node, player)
 		-- test if digging worked
 		local dug_node = minetest.get_node_or_nil(pos)
 		if not dug_node
