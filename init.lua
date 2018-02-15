@@ -409,7 +409,7 @@ local function replace_single_node(pos, node, nnd, player, name, inv, creative)
 	-- (other than the pointed_thing)
 	local newitem, succ = def.on_place(ItemStack(nnd.name), player,
 		{type = "node", under = pos, above = pos})
-	if not succ then
+	if succ == false then
 		return false, "Couldn't place '" .. nnd.name .. "'."
 	end
 
