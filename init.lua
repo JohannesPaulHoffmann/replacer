@@ -388,13 +388,17 @@ local function replace_single_node(pos, node, nnd, player, name, inv, creative)
 			"'. Replacement failed."
 	end
 
-	local def = minetest.registered_nodes[node.name]
-	if not def then
+	local ndef = minetest.registered_nodes[node.name]
+	if not ndef then
 		return false, "Unknown node: "..node.name
+	end
+	local new_ndef = minetest.registered_nodes[nnd.name]
+	if not new_ndef then
+		return false, "Unknown node should be placed: "..nnd.name
 	end
 
 	-- dig the current node if needed
-	if not def.buildable_to then
+	if not ndef.buildable_to then
 		-- give the player the item by simulating digging if possible
 		minetest.node_dig(pos, node, player)
 		-- test if digging worked
@@ -407,8 +411,8 @@ local function replace_single_node(pos, node, nnd, player, name, inv, creative)
 
 	-- place the node similar to how a player does it
 	-- (other than the pointed_thing)
-	local newitem, succ = def.on_place(ItemStack(nnd.name), player,
-		{type = "node", under = pos, above = pos})
+	local newitem, succ = new_ndef.on_place(ItemStack(nnd.name), player,
+		{type = "node", under = vector.new(pos), above = vector.new(pos)})
 	if succ == false then
 		return false, "Couldn't place '" .. nnd.name .. "'."
 	end
@@ -426,8 +430,9 @@ local function replace_single_node(pos, node, nnd, player, name, inv, creative)
 	-- test whether the placed node differs from the supposed node
 	local placed_node = minetest.get_node(pos)
 	if placed_node.name ~= nnd.name then
-		return false, "Placing '".. nnd.name ..
-			"' failed, another node appeared: '" .. placed_node.name .. "'"
+		-- Sometimes placing doesn't put the node but does something different
+		-- e.g. when placing snow on snow with the snow mod
+		return true
 	end
 
 	-- fix orientation if needed
