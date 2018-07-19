@@ -120,8 +120,8 @@ minetest.register_tool("replacer:replacer", {
 		local keys = placer:get_player_control()
 		local name = placer:get_player_name()
 		local creative_enabled = creative.is_enabled_for(name)
-		local modes_available = creative_enabled
-			or minetest.check_player_privs(name, "give")
+		local has_give = minetest.check_player_privs(name, "give")
+		local modes_available = has_give or creative_enabled
 
 		if keys.aux1
 		and modes_available then
@@ -145,12 +145,73 @@ minetest.register_tool("replacer:replacer", {
 		end
 
 		local node, mode = get_data(itemstack)
+		node = minetest.get_node_or_nil(pt.under) or node
 
 		if not modes_available then
 			mode = "single"
 		end
 
-		node = minetest.get_node_or_nil(pt.under) or node
+		local inv = placer:get_inventory()
+		if not (creative_enabled and has_give)
+		and not inv:contains_item("main", node.name) then
+			if creative_enabled then
+				if minetest.get_item_group(node.name,
+						"not_in_creative_inventory") > 0 then
+					-- search for a drop available in creative inventory
+					local found_item = false
+					local drops = minetest.get_node_drops(node.name)
+					for i = 1,#drops do
+						local name = drops[i]
+						if minetest.registered_nodes[name]
+						and minetest.get_item_group(name,
+								"not_in_creative_inventory") == 0 then
+							node.name = name
+							found_item = true
+							break
+						end
+					end
+					if not found_item then
+						inform(name, "Node not in creative invenotry: \"" ..
+							node.name .. "\".")
+						return
+					end
+				end
+			else
+				local found_item = false
+				-- search for a drop that the player has if possible
+				local drops = minetest.get_node_drops(node.name)
+				for i = 1,#drops do
+					local name = drops[i]
+					if minetest.registered_nodes[name]
+					and inv:contains_item("main", name) then
+						node.name = name
+						found_item = true
+						break
+					end
+				end
+				if not found_item then
+					-- search for a drop available in creative inventory
+					-- that first configuring the replacer,
+					-- then digging the nodes works
+					for i = 1,#drops do
+						local name = drops[i]
+						if minetest.registered_nodes[name]
+						and minetest.get_item_group(name,
+								"not_in_creative_inventory") == 0 then
+							node.name = name
+							found_item = true
+							break
+						end
+					end
+				end
+				if not found_item
+				and not has_give then
+					inform(name, "Item not in your inventory: '" .. node.name ..
+						"'.")
+					return
+				end
+			end
+		end
 
 		local metadata = set_data(itemstack, node, mode)
 
@@ -484,16 +545,9 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 		return
 	end
 
-	if not creative_enabled then
-
-		-- players usually don't carry dirt_with_grass around, set it to dirt
-		if nnd.name == "default:dirt_with_grass" then
-			nnd.name = "default:dirt"
-			set_data(itemstack, {name="default:dirt"}, "single")
-		end
-		if not minetest.check_player_privs(name, "give") then
-			mode = "single"
-		end
+	if not creative_enabled
+	and not minetest.check_player_privs(name, "give") then
+		mode = "single"
 	end
 
 	if mode == "single" then
