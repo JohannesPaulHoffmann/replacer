@@ -41,6 +41,8 @@ local path = minetest.get_modpath"replacer"
 dofile(path.."/check_owner.lua")
 
 replacer = {}
+replacer.settings = {}
+replacer.settings.enable_hot_switching = minetest.settings:get_bool("replacer.enable_hot_switching", true)
 
 replacer.blacklist = {};
 
@@ -123,8 +125,7 @@ minetest.register_tool("replacer:replacer", {
 		local has_give = minetest.check_player_privs(name, "give")
 		local modes_available = has_give or creative_enabled
 
-		if keys.aux1
-		and modes_available then
+		if keys.aux1 and modes_available and replacer.settings.enable_hot_switching then
 			-- Change Mode when holding the fast key
 			local node, mode = get_data(itemstack)
 			mode = modes[modes[mode]%#modes+1]
@@ -533,7 +534,7 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 	if node_toreplace.name == nnd.name
 	and node_toreplace.param1 == nnd.param1
 	and node_toreplace.param2 == nnd.param2 then
-		inform(name, "Nothing to replace.")
+		--inform(name, "Nothing to replace.")
 		return
 	end
 

@@ -1,0 +1,1 @@
+replacer.enable_hot_switching (Allow creative users to switch tool type) bool true
