@@ -3,10 +3,11 @@ replacer.image_replacements = {}
 
 -- support for RealTest
 if (minetest.get_modpath("trees")
-and minetest.get_modpath("core")
-and minetest.get_modpath("instruments")
-and minetest.get_modpath("anvil")
-and minetest.get_modpath("scribing_table")) then
+	and minetest.get_modpath("core")
+	and minetest.get_modpath("instruments")
+	and minetest.get_modpath("anvil")
+	and minetest.get_modpath("scribing_table")) then
+
 	replacer.image_replacements["group:planks"] = "trees:pine_planks"
 	replacer.image_replacements["group:plank"] = "trees:pine_plank"
 	replacer.image_replacements["group:wood"] = "trees:pine_planks"
@@ -27,16 +28,16 @@ minetest.register_tool("replacer:inspect",
 	liquids_pointable = true, -- it is ok to request information about liquids
 
 	on_use = function(itemstack, user, pointed_thing)
-	   return replacer.inspect(itemstack, user, pointed_thing, nil, true); --false)
-	end,
+	   return replacer.inspect(itemstack, user, pointed_thing, nil, true) --false)
+    end,
 
-	on_place = function(itemstack, placer, pointed_thing)
+    on_place = function(itemstack, placer, pointed_thing)
 	   return replacer.inspect(itemstack, placer, pointed_thing, nil, true)
-	end,
+    end,
 })
 
 
-replacer.inspect = function(itemstack, user, pointed_thing, mode, show_receipe)
+replacer.inspect = function(_, user, pointed_thing, mode, show_receipe)
 
 	if (user == nil or pointed_thing == nil) then
 		return nil
@@ -47,11 +48,11 @@ replacer.inspect = function(itemstack, user, pointed_thing, mode, show_receipe)
 		show_receipe = true
 	end
 
-	if (	 pointed_thing.type == 'object') then
+	if (pointed_thing.type == 'object') then
 		local text = 'This is '
 		local ref = pointed_thing.ref
 		if (not(ref)) then
-			text = text..'a borken object. We have no further information about it. It is located'
+			text = text..'a broken object. We have no further information about it. It is located'
 		elseif (ref:is_player()) then
 			text = text..'your fellow player \"'..tostring(ref:get_player_name())..'\"'
 		else
@@ -59,13 +60,13 @@ replacer.inspect = function(itemstack, user, pointed_thing, mode, show_receipe)
 			if( luaob and luaob.get_staticdata) then
 				text = text..'entity \"'..tostring( luaob.name )..'\"'
 				local sdata = luaob:get_staticdata()
-				if (sdata) then
+				if (0 < #sdata) then
 					sdata = minetest.deserialize(sdata) or {}
 					if (sdata.itemstring) then
 						text = text..' ['..tostring(sdata.itemstring)..']'
 						if (show_receipe) then
 							-- the fields part is used here to provide additional information about the entity
-							replacer.inspect_show_crafting(name, sdata.itemstring, { pos=pos, luaob=luaob})
+							replacer.inspect_show_crafting(name, sdata.itemstring, { luaob=luaob})
 						end
 					end
 					if (sdata.age) then
@@ -77,11 +78,12 @@ replacer.inspect = function(itemstack, user, pointed_thing, mode, show_receipe)
 			end
 
 		end
-		text = text..' at '..minetest.pos_to_string(ref:get_pos())
+		text = text..' at '..minetest.pos_to_string(ref:getpos())
 		minetest.chat_send_player(name, text)
 		return nil
 	elseif (pointed_thing.type ~= 'node') then
-		minetest.chat_send_player(name, 'Sorry. This is an unkown something of type \"'..tostring(pointed_thing.type)..'\". No information available.')
+		minetest.chat_send_player(name, 'Sorry. This is an unkown something of type \"'..
+			tostring(pointed_thing.type)..'\". No information available.')
 		return nil
 	end
 
@@ -93,11 +95,13 @@ replacer.inspect = function(itemstack, user, pointed_thing, mode, show_receipe)
 		return nil
 	end
 
-	local text = ' ['..tostring(node.name)..'] with param2='..tostring(node.param2)..' at '..minetest.pos_to_string(pos)..'.'
+	local text = ' ['..tostring(node.name)..'] with param2='..tostring(node.param2)..
+		' at '..minetest.pos_to_string(pos)..'.'
 	if (not(minetest.registered_nodes[node.name])) then
 		text = 'This node is an UNKOWN block'..text
 	else
-		text = 'This is a \"'..tostring(minetest.registered_nodes[node.name].description or ' - no description provided -')..'\" block'..text
+		text = 'This is a \"'..tostring(minetest.registered_nodes[node.name].description or
+		' - no description provided -')..'\" block'..text
 	end
 	local protected_info = ""
 	if (minetest.is_protected(	 pos, name)) then
@@ -127,7 +131,7 @@ replacer.group_placeholder['group:wood'] = 'default:wood'
 replacer.group_placeholder['group:tree'] = 'default:tree'
 replacer.group_placeholder['group:sapling']= 'default:sapling'
 replacer.group_placeholder['group:stick'] = 'default:stick'
-replacer.group_placeholder['group:stone'] = 'default:cobble'; -- 'default:stone';  point people to the cheaper cobble
+replacer.group_placeholder['group:stone'] = 'default:cobble' -- 'default:stone' point people to the cheaper cobble
 replacer.group_placeholder['group:sand'] = 'default:sand'
 replacer.group_placeholder['group:leaves'] = 'default:leaves'
 replacer.group_placeholder['group:wood_slab'] = 'stairs:slab_wood'
@@ -187,7 +191,7 @@ replacer.add_circular_saw_receipe = function(node_name, receipes)
 help[1]='default'
 	local basic_node_name = help[1]..':'..help2[2]
 	-- node found that fits into the saw
-	receipes[#receipes+1] = { method = 'saw',	  type = 'saw',	  items = { basic_node_name}, output = node_name}
+	receipes[#receipes+1] = { method = 'saw', type = 'saw', items = { basic_node_name}, output = node_name}
 	return receipes
 end
 
@@ -383,17 +387,8 @@ replacer.form_input_handler = function(player, formname, fields)
 	if (formname and formname == "replacer:crafting" and player and not(fields.quit)) then
 		replacer.inspect_show_crafting(player:get_player_name(), nil, fields)
 		return
-	end
+        end
 end
 
 -- establish a callback so that input from the player-specific formspec gets handled
 minetest.register_on_player_receive_fields(replacer.form_input_handler)
-
-
-minetest.register_craft({
-	output = 'replacer:inspect',
-	recipe = {
-		{ 'default:torch'},
-		{ 'default:stick'},
-	}
-})
