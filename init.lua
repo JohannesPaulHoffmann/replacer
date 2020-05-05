@@ -75,6 +75,8 @@ replacer.charge_per_node = 15
 -- node count limit
 replacer.max_nodes = tonumber(minetest.settings:get("replacer.max_nodes") or 3168)
 
+replacer.enable_hot_switching = minetest.settings:get_bool("replacer.enable_hot_switching", true)
+
 -- select which recipes to hide (not all combinations make sense)
 replacer.hide_recipe_basic =
 	minetest.settings:get_bool('replacer.hide_recipe_basic') or false

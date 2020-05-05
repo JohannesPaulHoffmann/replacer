@@ -231,7 +231,7 @@ function replacer.replace(itemstack, user, pt, right_clicked)
 	local creative_enabled = creative.is_enabled_for(name)
 	local has_give = minetest.check_player_privs(name, "give")
 	local is_technic = itemstack:get_name() == replacer.tool_name_technic
-	local modes_are_available = is_technic or has_give or creative_enabled
+	local modes_are_available = replacer.enable_hot_switching and (is_technic or has_give or creative_enabled)
 	
 	-- is special-key held? (aka fast-key)
 	if keys.aux1 then
@@ -417,7 +417,7 @@ function replacer.common_on_place(itemstack, placer, pt)
 	local creative_enabled = creative.is_enabled_for(name)
 	local has_give = minetest.check_player_privs(name, "give")
 	local is_technic = itemstack:get_name() == replacer.tool_name_technic
-	local modes_are_available = is_technic or has_give or creative_enabled
+	local modes_are_available = replacer.enable_hot_switching and (is_technic or has_give or creative_enabled)
 
 	-- is special-key held? (aka fast-key)
 	if keys.aux1 then
