@@ -294,10 +294,10 @@ replacer.inspect_show_crafting = function(name, node_name, fields)
 		formspec = formspec.."label[0.0,0.3;Located at "..
 			minetest.formspec_escape(minetest.pos_to_string(fields.pos))
 		if (fields.param2) then
-			formspec = formspec.." with param2="..tostring(fields.param2)
+			formspec = formspec.." with param2="..tostring(fields.param2).."\n"
 		end
 		if (fields.light) then
-			formspec = formspec.." and receiving "..tostring(fields.light).." light"
+			formspec = formspec.."and receiving "..tostring(fields.light).." light"
 		end
 		formspec = formspec..".]"
 	end
